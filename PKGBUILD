@@ -25,7 +25,11 @@
 ## Default is: 0 => generic
 ## Good option if your package is for one machine: 98 (Intel native) or 99 (AMD native)
 if [ -z ${_microarchitecture+x} ]; then
-  _microarchitecture=0
+  _microarchitecture=98
+fi
+
+if [ -z ${use_pds+x} ]; then
+  use_pds=y
 fi
 
 ## Disable NUMA since most users do not have multiple processors. Breaks CUDA/NvEnc.
@@ -41,7 +45,15 @@ fi
 ## Set variable "use_tracers" to: n to disable (possibly increase performance)
 ##                                y to enable  (stock default)
 if [ -z ${use_tracers+x} ]; then
-  use_tracers=y
+  use_tracers=n
+fi
+
+## USED FOR UNPRIVILEGD CONTAINER
+## Enable CONFIG_USER_NS_UNPRIVILEGED flag https://aur.archlinux.org/cgit/aur.git/tree/0001-ZEN-Add-sysctl-and-CONFIG-to-disallow-unprivileged-C.patch?h=linux-ck
+## Set variable "use_ns" to: n to disable (stock Xanmod)
+##                           y to enable (stock Archlinux)
+if [ -z ${use_ns+x} ]; then
+  use_ns=y
 fi
 
 ## Choose between GCC and CLANG config (default is GCC)
@@ -104,7 +116,7 @@ for _patch in ${_patches[@]}; do
     #source+=("${_patch}::https://git.archlinux.org/svntogit/packages.git/plain/trunk/${_patch}?h=packages/linux&id=${_commit}")
     source+=("${_patch}::https://raw.githubusercontent.com/archlinux/svntogit-packages/${_commit}/trunk/${_patch}")
 done
-        
+
 sha256sums=('3f6baa97f37518439f51df2e4f3d65a822ca5ff016aa8e60d2cc53b95a6c89d9'  # kernel tar.xz
             'SKIP'                                                              #        tar.sign
             'ba173136348108df3066db4c2e2c0539e16162fa017aa738df81de85e0124657'  # xanmod
@@ -121,11 +133,11 @@ export KBUILD_BUILD_USER=${KBUILD_BUILD_USER:-makepkg}
 export KBUILD_BUILD_TIMESTAMP=${KBUILD_BUILD_TIMESTAMP:-$(date -Ru${SOURCE_DATE_EPOCH:+d @$SOURCE_DATE_EPOCH})}
 
 prepare() {
-  cd linux-${_major}  
-  
+  cd linux-${_major}
+
   # Apply Xanmod patch
   patch -Np1 -i ../patch-${pkgver}-xanmod${xanmod}
-  
+
   msg2 "Setting version..."
   scripts/setlocalversion --save-scmversion
   #echo "-$pkgrel" > localversion.10-pkgrel
@@ -140,7 +152,7 @@ prepare() {
     msg2 "Applying patch $src..."
     patch -Np1 < "../$src"
   done
-  
+
   # Manjaro patches
   rm ../linux513-$__commit/0103-futex.patch  # remove conflicting ones
   rm ../linux513-$__commit/0001-ZEN-Add-sysctl-and-CONFIG-to-disallow-unprivileged-CLONE_NEWUSER.patch
@@ -149,10 +161,10 @@ prepare() {
       [[ $_patch = *.patch ]] || continue
       msg2 "Applying patch: $_patch..."
       patch -Np1 < "../linux513-$__commit/$_patch"
-  done 
+  done
   git apply -p1 < "../linux513-$__commit/0513-bootsplash.gitpatch"
-  
-  
+
+
   # Applying configuration
   cp -vf CONFIGS/xanmod/${_compiler}/config .config
   # enable LTO_CLANG_THIN
@@ -161,9 +173,9 @@ prepare() {
     scripts/config --enable LTO_CLANG_THIN
     _LLVM=1
   fi
-  
+
   scripts/config --enable CONFIG_BOOTSPLASH
-  
+
   # CONFIG_STACK_VALIDATION gives better stack traces. Also is enabled in all official kernel packages by Archlinux team
   scripts/config --enable CONFIG_STACK_VALIDATION
 
@@ -184,7 +196,7 @@ prepare() {
     msg2 "Disabling NUMA..."
     scripts/config --disable CONFIG_NUMA
   fi
-    
+
   msg2 "add anbox support"
   scripts/config --enable CONFIG_ASHMEM
   # CONFIG_ION is not set
@@ -193,7 +205,7 @@ prepare() {
   scripts/config --enable CONFIG_ANDROID_BINDERFS
   scripts/config --set-str CONFIG_ANDROID_BINDER_DEVICES "binder,hwbinder,vndbinder"
   # CONFIG_ANDROID_BINDER_IPC_SELFTEST is not set
-  
+
   scripts/config --set-str CONFIG_DEFAULT_HOSTNAME "manjaro"
 
   # Let's user choose microarchitecture optimization in GCC
@@ -269,7 +281,6 @@ _package() {
 
   # Used by mkinitcpio to name the kernel
   echo "manjaro-xanmod" | install -Dm644 /dev/stdin "$modulesdir/pkgbase"
- 
   # add kernel version
   echo "${pkgver}-${pkgrel}-Manjaro-Xanmod x64" | install -Dm644 /dev/stdin "${pkgdir}/boot/${pkgbase}.kver"
 
